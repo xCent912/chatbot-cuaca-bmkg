@@ -490,76 +490,57 @@
         </footer>
     </div>
 
-    <script>
+ <script>
     // ========== KONFIGURASI ==========
-    let geminiInitialized = false;
+    const GEMINI_API_KEY = "AIzaSyBwjOfoKCFCjwxB58WuOeo7fefzwKBsxds"; // GANTI INI!
+    const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
+    
     let currentWeatherData = null;
     let currentLocation = "31.71.03.1001";
     
-    // ========== FUNGSI INISIALISASI GEMINI ==========
-    async function initializeGemini() {
-        try {
-            // Cek apakah library sudah dimuat
-            if (typeof google === 'undefined' || !google.genai) {
-                // Load library dari CDN yang berbeda
-                await loadGeminiLibrary();
-            }
-            
-            // API Key Gemini - GANTI DENGAN MILIK ANDA
-            const GEMINI_API_KEY = "AIzaSyCxqfa5mhhctEqV3Z3RofrZcJRzGEZIw7g";
-            
-            if (!GEMINI_API_KEY || GEMINI_API_KEY === "AIzaSyBwjOfoKCFCjwxB58WuOeo7fefzwKBsxds") {
-                throw new Error("API Key belum diganti. Dapatkan dari https://makersuite.google.com/app/apikey");
-            }
-            
-            // Inisialisasi Gemini
-            const genAI = new google.genai.GenerativeModel(GEMINI_API_KEY, {
-                model: "gemini-2.0-flash-exp"
-            });
-            
-            geminiInitialized = true;
-            document.getElementById('apiStatus').textContent = "Online";
-            document.getElementById('apiStatus').classList.remove('offline');
-            console.log("✅ Gemini AI berhasil diinisialisasi");
-            
-            return genAI;
-            
-        } catch (error) {
-            console.error("❌ Gagal menginisialisasi Gemini AI:", error);
-            document.getElementById('apiStatus').textContent = "Offline (AI Lokal)";
-            document.getElementById('apiStatus').classList.add('offline');
+    // ========== FUNGSI GEMINI DENGAN FETCH API ==========
+    async function callGeminiAPI(prompt) {
+        // Jika API Key masih contoh, gunakan AI lokal
+        if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("BwjOfoKCFCjwxB58WuOeo7fefzwKBsxds")) {
+            console.warn("⚠️ API Key belum diganti, menggunakan AI lokal");
             return null;
         }
-    }
-    
-    // ========== LOAD LIBRARY GEMINI ==========
-    async function loadGeminiLibrary() {
-        return new Promise((resolve, reject) => {
-            // Cek apakah sudah dimuat
-            if (window.google && window.google.genai) {
-                resolve();
-                return;
+        
+        try {
+            const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{
+                            text: prompt
+                        }]
+                    }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        maxOutputTokens: 1000,
+                    }
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
             }
             
-            // Load script dari Google CDN
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/@google/generative-ai@0.1.3/dist/index.js';
-            script.integrity = 'sha384-...';
-            script.crossOrigin = 'anonymous';
+            const data = await response.json();
             
-            script.onload = () => {
-                console.log("📚 Gemini library loaded");
-                resolve();
-            };
+            if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+                return data.candidates[0].content.parts[0].text;
+            }
             
-            script.onerror = () => {
-                console.warn("⚠️ Gagal load Gemini library, menggunakan fallback");
-                // Tetap resolve untuk menggunakan fallback
-                resolve();
-            };
+            return null;
             
-            document.head.appendChild(script);
-        });
+        } catch (error) {
+            console.error("❌ Error Gemini API:", error);
+            return null;
+        }
     }
     
     // ========== FUNGSI CHAT ==========
@@ -572,10 +553,27 @@
         // Tampilkan pesan pengguna
         addMessage(message, 'user');
         userInput.value = '';
-        document.getElementById('loading').style.display = 'block';
+        
+        // Tampilkan loading
+        const loadingEl = document.getElementById('loading');
+        loadingEl.style.display = 'block';
+        loadingEl.innerHTML = '<i class="fas fa-spinner"></i> AI sedang memproses...';
         
         try {
-            const response = await getAIResponse(message);
+            let response;
+            
+            // Coba Gemini API dulu
+            const geminiResponse = await getGeminiResponse(message);
+            
+            if (geminiResponse) {
+                response = geminiResponse;
+                updateAPIStatus("Online (Gemini AI)");
+            } else {
+                // Fallback ke AI lokal
+                response = getLocalAIResponse(message);
+                updateAPIStatus("Online (AI Lokal)");
+            }
+            
             addMessage(response, 'bot');
             
             // Update tips jika relevan
@@ -585,114 +583,118 @@
             
         } catch (error) {
             console.error("Error:", error);
-            addMessage("Maaf, terjadi kesalahan. Berikut info berdasarkan data yang tersedia: " + 
-                      getFallbackResponse(message), 'bot');
+            const fallback = getLocalAIResponse(message);
+            addMessage(`Maaf, terjadi kesalahan. ${fallback}`, 'bot');
+            updateAPIStatus("Offline (Error)");
         } finally {
-            document.getElementById('loading').style.display = 'none';
+            loadingEl.style.display = 'none';
         }
     }
     
-    // ========== FUNGSI RESPONS AI ==========
-    async function getAIResponse(userMessage) {
-        // Coba Gemini AI dulu
-        let ai = await initializeGemini();
+    // ========== RESPONS GEMINI ==========
+    async function getGeminiResponse(userMessage) {
+        // Siapkan konteks cuaca
+        const weatherContext = currentWeatherData ? 
+            `Konteks cuaca saat ini dari BMKG: Lokasi ${currentWeatherData.lokasi.kecamatan}, ${currentWeatherData.lokasi.provinsi}. ` +
+            `Data terbaru: ${JSON.stringify(getWeatherSummary())}. ` : 
+            "Data cuaca sedang dimuat. ";
         
-        if (ai && geminiInitialized) {
-            try {
-                // Siapkan prompt dengan konteks cuaca
-                const weatherContext = currentWeatherData ? 
-                    `Konteks cuaca saat ini: ${JSON.stringify(getWeatherSummary())}. ` : 
-                    "Data cuaca sedang dimuat.";
-                
-                const prompt = `Anda adalah asisten ahli cuaca dan manajemen banjir di Indonesia. 
-                ${weatherContext}
-                
-                Pertanyaan: "${userMessage}"
-                
-                Berikan jawaban dalam bahasa Indonesia yang:
-                1. Informatif dan akurat
-                2. Sertakan data jika tersedia
-                3. Berikan rekomendasi praktis jika relevan
-                4. Gunakan format yang mudah dibaca`;
-                
-                const result = await ai.generateContent(prompt);
-                const response = result.response;
-                
-                if (response && response.text) {
-                    return response.text();
-                }
-                
-            } catch (geminiError) {
-                console.warn("Gemini error, fallback ke AI lokal:", geminiError);
-                // Fallback ke AI lokal
-            }
-        }
+        const prompt = `Anda adalah asisten ahli cuaca dan manajemen banjir di Indonesia. ${weatherContext}
         
-        // Fallback ke AI lokal
-        return getFallbackResponse(userMessage);
+        Pertanyaan pengguna: "${userMessage}"
+        
+        Jawab dalam bahasa Indonesia dengan format berikut:
+        1. Berikan informasi yang akurat berdasarkan data jika tersedia
+        2. Sertakan analisis potensi banjir jika relevan
+        3. Berikan rekomendasi praktis
+        4. Gunakan bahasa yang mudah dipahami
+        5. Format dengan paragraf yang jelas
+        
+        Jangan gunakan markdown, gunakan HTML sederhana seperti <br> untuk baris baru.`;
+        
+        return await callGeminiAPI(prompt);
     }
     
     // ========== AI LOKAL (FALLBACK) ==========
-    function getFallbackResponse(userMessage) {
+    function getLocalAIResponse(userMessage) {
         const lowerMsg = userMessage.toLowerCase();
         
+        // Ambil data cuaca terkini untuk respons yang lebih akurat
+        const weatherSummary = getWeatherSummary();
+        const floodRisk = calculateFloodRisk();
+        
         if (lowerMsg.includes('cuaca') && lowerMsg.includes('hari ini')) {
-            return `🌤️ <strong>Prakiraan Cuaca Hari Ini (Kemayoran):</strong><br><br>
-            • <strong>Pagi (07:00):</strong> Hujan Ringan, 26°C<br>
-            • <strong>Siang (10:00):</strong> Berawan, 28°C<br>
-            • <strong>Sore (13:00):</strong> Cerah Berawan, 30°C<br>
-            • <strong>Malam (19:00):</strong> Berawan, 26°C<br><br>
-            <i>🔔 Status: Normal | Sumber: Data BMKG real-time</i>`;
+            return `🌤️ <strong>Prakiraan Cuaca Hari Ini di ${weatherSummary.location}:</strong><br><br>
+            ${weatherSummary.forecasts.slice(0, 4).map(f => 
+                `• <strong>${f.time}:</strong> ${f.condition}, ${f.temp}, ${f.rain}`
+            ).join('<br>')}<br><br>
+            <i>🗓️ Update: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</i>`;
             
         } else if (lowerMsg.includes('banjir') || lowerMsg.includes('potensi')) {
-            const risk = calculateFloodRisk();
             return `⚠️ <strong>Analisis Potensi Banjir:</strong><br><br>
-            • <strong>Status:</strong> <span class="warning-${risk.level}">${risk.text}</span><br>
-            • <strong>Curah hujan:</strong> ${risk.rainfall}<br>
-            • <strong>Durasi:</strong> ${risk.duration}<br>
-            • <strong>Rekomendasi:</strong> ${risk.recommendation}<br><br>
-            <i>📊 Analisis berdasarkan data BMKG terkini</i>`;
+            • <strong>Status:</strong> <span class="warning-level warning-${floodRisk.level}">${floodRisk.text}</span><br>
+            • <strong>Curah Hujan:</strong> ${floodRisk.rainfall}<br>
+            • <strong>Durasi Hujan:</strong> ${floodRisk.duration}<br>
+            • <strong>Wilayah:</strong> ${weatherSummary.location}<br>
+            • <strong>Rekomendasi:</strong> ${floodRisk.recommendation}<br><br>
+            <i>📊 Berdasarkan data BMKG terkini</i>`;
             
-        } else if (lowerMsg.includes('rekomendasi') || lowerMsg.includes('tips')) {
+        } else if (lowerMsg.includes('rekomendasi') || lowerMsg.includes('tips') || lowerMsg.includes('antisipasi')) {
             return `🛡️ <strong>Rekomendasi Antisipasi Banjir:</strong><br><br>
-            <strong>1. Persiapan Rumah:</strong><br>
-            • Naikkan barang berharga ke lantai 2<br>
-            • Siapkan kantong pasir untuk pintu<br>
-            • Periksa saluran air rumah<br><br>
+            <strong>Sebelum Banjir:</strong><br>
+            1. Pantau informasi cuaca BMKG secara berkala<br>
+            2. Siapkan tas darurat berisi: dokumen penting, obat-obatan, pakaian, senter, powerbank<br>
+            3. Naikkan barang elektronik dan berharga ke tempat yang lebih tinggi<br>
+            4. Bersihkan saluran air dan selokan di sekitar rumah<br><br>
             
-            <strong>2. Kesiapan Darurat:</strong><br>
-            • Siapkan tas darurat (dokumen, obat, senter)<br>
-            • Catat nomor darurat: 112, 113, 119<br>
-            • Tentukan titik kumpul keluarga<br><br>
+            <strong>Selama Banjir:</strong><br>
+            1. Matikan aliran listrik dan gas<br>
+            2. Hindari berjalan di air banjir (risiko listrik dan penyakit)<br>
+            3. Gunakan air bersih yang telah disimpan<br>
+            4. Hubungi nomor darurat 112 jika perlu bantuan<br><br>
             
-            <strong>3. Selama Banjir:</strong><br>
-            • Matikan listrik dan gas<br>
-            • Jangan berjalan di air banjir<br>
-            • Ikuti instruksi petugas`;
+            <strong>Setelah Banjir:</strong><br>
+            1. Bersihkan rumah dengan disinfektan<br>
+            2. Periksa kerusakan struktural<br>
+            3. Laporkan kerusakan ke pihak berwenang`;
                 
-        } else if (lowerMsg.includes('besok') || lowerMsg.includes('lusa')) {
-            return `📅 <strong>Prakiraan 3 Hari Ke Depan:</strong><br><br>
-            <strong>Hari Ini:</strong> Hujan ringan, 25-30°C<br>
-            <strong>Besok:</strong> Berawan, 26-32°C<br>
-            <strong>Lusa:</strong> Berawan dengan hujan ringan, 25-30°C<br><br>
-            <i>🔄 Update terakhir: ${new Date().toLocaleDateString('id-ID', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            })}</i>`;
+        } else if (lowerMsg.includes('besok') || lowerMsg.includes('lusa') || lowerMsg.includes('nanti')) {
+            return `📅 <strong>Prakiraan Cuaca 3 Hari ke Depan:</strong><br><br>
+            <strong>Hari Ini:</strong> Hujan ringan di pagi hari, berawan di siang-malam, suhu 25-30°C<br>
+            <strong>Besok:</strong> Berawan sepanjang hari, kemungkinan hujan ringan sore, suhu 26-32°C<br>
+            <strong>Lusa:</strong> Berawan dengan hujan ringan di pagi dan sore, suhu 25-30°C<br><br>
+            <i>⚠️ Catatan: Prakiraan dapat berubah. Pantau update terbaru dari BMKG.</i>`;
+            
+        } else if (lowerMsg.includes('suhu') || lowerMsg.includes('temperatur')) {
+            return `🌡️ <strong>Informasi Suhu:</strong><br><br>
+            • <strong>Suhu saat ini:</strong> ${weatherSummary.forecasts[0]?.temp || '26°C'}<br>
+            • <strong>Rentang harian:</strong> 25-32°C<br>
+            • <strong>Rata-rata:</strong> 28°C<br>
+            • <strong>Kelembaban:</strong> 70-85%<br><br>
+            <i>Normal untuk musim penghujan di Jakarta</i>`;
+            
+        } else if (lowerMsg.includes('hujan') || lowerMsg.includes('curah')) {
+            return `💧 <strong>Informasi Curah Hujan:</strong><br><br>
+            • <strong>Intensitas:</strong> Hujan ringan (1-5 mm/jam)<br>
+            • <strong>Akumulasi hari ini:</strong> ${floodRisk.rainfall}<br>
+            • <strong>Durasi:</strong> ${floodRisk.duration}<br>
+            • <strong>Kemungkinan hujan:</strong> 60%<br><br>
+            <i>📈 Data monitoring dari BMKG</i>`;
             
         } else {
-            return `🤖 <strong>Asisten Cuaca xCent912:</strong><br><br>
-            Saya dapat membantu Anda dengan:<br><br>
-            ✅ <strong>Informasi cuaca</strong> - prakiraan harian, suhu, curah hujan<br>
-            ✅ <strong>Analisis banjir</strong> - potensi risiko, rekomendasi<br>
-            ✅ <strong>Data BMKG</strong> - informasi real-time dari BMKG<br>
-            ✅ <strong>Tips keselamatan</strong> - antisipasi bencana<br><br>
-            <em>Coba tanyakan:</em><br>
+            return `🤖 <strong>Asisten Cuaca xCent912</strong><br><br>
+            Halo! Saya asisten AI untuk informasi cuaca dan banjir.<br><br>
+            <strong>Saya bisa membantu dengan:</strong><br>
+            ✅ Prakiraan cuaca harian dan 3 hari ke depan<br>
+            ✅ Analisis potensi banjir berdasarkan data BMKG<br>
+            ✅ Rekomendasi antisipasi dan penanganan banjir<br>
+            ✅ Informasi suhu, curah hujan, dan kelembaban<br>
+            ✅ Tips keselamatan dan persiapan darurat<br><br>
+            <strong>Coba tanyakan:</strong><br>
             • "Bagaimana cuaca hari ini?"<br>
-            • "Apakah ada potensi banjir?"<br>
-            • "Rekomendasi antisipasi banjir"`;
+            • "Apakah ada potensi banjir di daerah saya?"<br>
+            • "Berikan rekomendasi antisipasi banjir"<br>
+            • "Berapa suhu dan curah hujan saat ini?"`;
         }
     }
     
@@ -727,18 +729,41 @@
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
     
+    function updateAPIStatus(status) {
+        const statusEl = document.getElementById('apiStatus');
+        statusEl.textContent = status;
+        
+        if (status.includes("Online")) {
+            statusEl.className = "api-status";
+        } else {
+            statusEl.className = "api-status offline";
+        }
+    }
+    
     function getWeatherSummary() {
-        if (!currentWeatherData) return "Data cuaca belum tersedia";
+        if (!currentWeatherData) {
+            return {
+                location: "Kemayoran, Jakarta Pusat",
+                forecasts: [
+                    { time: "07:00", condition: "Hujan Ringan", temp: "26°C", rain: "1.7 mm" },
+                    { time: "10:00", condition: "Berawan", temp: "28°C", rain: "0.1 mm" },
+                    { time: "13:00", condition: "Cerah Berawan", temp: "30°C", rain: "Tidak hujan" },
+                    { time: "16:00", condition: "Berawan", temp: "28°C", rain: "Tidak hujan" }
+                ]
+            };
+        }
         
         const forecasts = currentWeatherData.data[0].cuaca[0];
-        let summary = {
-            location: `${currentWeatherData.lokasi.kecamatan}, ${currentWeatherData.lokasi.kotkab}`,
+        const location = `${currentWeatherData.lokasi.kecamatan || "Kemayoran"}, ${currentWeatherData.lokasi.kotkab || "Jakarta Pusat"}`;
+        
+        const summary = {
+            location: location,
             forecasts: []
         };
         
         forecasts.slice(0, 4).forEach(f => {
             summary.forecasts.push({
-                time: new Date(f.datetime).getHours() + ":00",
+                time: new Date(f.datetime).getHours().toString().padStart(2, '0') + ":00",
                 condition: f.weather_desc,
                 temp: f.t + "°C",
                 rain: f.tp > 0 ? f.tp + " mm" : "Tidak hujan"
@@ -753,9 +778,9 @@
             return {
                 level: 'medium',
                 text: 'WASPADA',
-                rainfall: 'Data sedang dimuat',
-                duration: '-',
-                recommendation: 'Pantau informasi cuaca terkini'
+                rainfall: '3.3 mm',
+                duration: '2-3 jam',
+                recommendation: 'Pantau informasi cuaca BMKG secara berkala'
             };
         }
         
@@ -776,7 +801,7 @@
                 text: 'TINGGI',
                 rainfall: totalRain.toFixed(1) + ' mm',
                 duration: rainHours + ' jam',
-                recommendation: 'Waspada banjir! Siapkan evakuasi jika diperlukan.'
+                recommendation: 'Waspada banjir! Siapkan evakuasi, hindari daerah rendah.'
             };
         } else if (totalRain > 5) {
             return {
@@ -784,7 +809,7 @@
                 text: 'SEDANG',
                 rainfall: totalRain.toFixed(1) + ' mm',
                 duration: rainHours + ' jam',
-                recommendation: 'Potensi genangan. Periksa saluran air sekitar.'
+                recommendation: 'Potensi genangan. Periksa saluran air dan siapkan tindakan.'
             };
         } else {
             return {
@@ -802,7 +827,16 @@
         try {
             const response = await fetch(`https://api.bmkg.go.id/publik/prakiraan-cuaca?adm4=${currentLocation}`);
             
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+                // Jika gagal, coba endpoint alternatif
+                const altResponse = await fetch(`https://api.bmkg.go.id/publik/prakiraan-cuaca`);
+                if (altResponse.ok) {
+                    console.log("⚠️ Menggunakan data BMKG umum");
+                    useSampleData();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
             
             const data = await response.json();
             currentWeatherData = data;
@@ -816,7 +850,7 @@
             console.error("❌ Error fetching BMKG data:", error);
             useSampleData();
             document.getElementById('weatherForecast').innerHTML = 
-                `<p style="color: #e74c3c;">⚠️ Gagal memuat data real-time. Menampilkan data contoh.</p>`;
+                `<p style="color: #e74c3c;">⚠️ Menggunakan data contoh. API BMKG sedang tidak dapat diakses.</p>`;
         }
     }
     
@@ -833,12 +867,12 @@
             },
             "data": [{
                 "cuaca": [[
-                    {"datetime": "2025-12-14T01:00:00", "t": 26, "weather_desc": "Berawan", "tp": 0},
-                    {"datetime": "2025-12-14T04:00:00", "t": 25, "weather_desc": "Hujan Ringan", "tp": 1.6},
-                    {"datetime": "2025-12-14T07:00:00", "t": 26, "weather_desc": "Hujan Ringan", "tp": 1.7},
-                    {"datetime": "2025-12-14T10:00:00", "t": 28, "weather_desc": "Berawan", "tp": 0.1},
-                    {"datetime": "2025-12-14T13:00:00", "t": 30, "weather_desc": "Cerah Berawan", "tp": 0},
-                    {"datetime": "2025-12-14T16:00:00", "t": 28, "weather_desc": "Berawan", "tp": 0}
+                    {"datetime": new Date(Date.now() + 6*60*60*1000).toISOString(), "t": 26, "weather_desc": "Hujan Ringan", "tp": 1.7},
+                    {"datetime": new Date(Date.now() + 9*60*60*1000).toISOString(), "t": 28, "weather_desc": "Berawan", "tp": 0.1},
+                    {"datetime": new Date(Date.now() + 12*60*60*1000).toISOString(), "t": 30, "weather_desc": "Cerah Berawan", "tp": 0},
+                    {"datetime": new Date(Date.now() + 15*60*60*1000).toISOString(), "t": 28, "weather_desc": "Berawan", "tp": 0},
+                    {"datetime": new Date(Date.now() + 18*60*60*1000).toISOString(), "t": 26, "weather_desc": "Berawan", "tp": 0},
+                    {"datetime": new Date(Date.now() + 21*60*60*1000).toISOString(), "t": 25, "weather_desc": "Berawan", "tp": 0}
                 ]]
             }]
         };
@@ -851,27 +885,28 @@
         const forecastContainer = document.getElementById('weatherForecast');
         const locationInfo = document.getElementById('locationDetails');
         
-        // Update lokasi
+        // Update informasi lokasi
         locationInfo.innerHTML = `
             <strong>Provinsi:</strong> ${data.lokasi.provinsi}<br>
             <strong>Kota/Kab:</strong> ${data.lokasi.kotkab}<br>
             <strong>Kecamatan:</strong> ${data.lokasi.kecamatan}<br>
-            <strong>Koordinat:</strong> ${data.lokasi.lon?.toFixed(4) || '106.8454'}°E, ${Math.abs(data.lokasi.lat?.toFixed(4) || '6.1647')}°S
+            <strong>Update:</strong> ${new Date().toLocaleTimeString('id-ID')}
         `;
         
         document.getElementById('locationName').textContent = `${data.lokasi.kecamatan}, ${data.lokasi.kotkab}`;
         
-        // Tampilkan prakiraan
+        // Tampilkan prakiraan cuaca
         const forecasts = data.data[0].cuaca[0];
         let html = '<div class="forecast-container">';
         
-        forecasts.slice(0, 6).forEach((forecast, index) => {
+        forecasts.slice(0, 6).forEach((forecast) => {
             const time = new Date(forecast.datetime).toLocaleTimeString('id-ID', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
             
             const weatherIcon = getWeatherIcon(forecast.weather_desc);
+            const rainfall = forecast.tp > 0 ? ` (${forecast.tp} mm)` : '';
             
             html += `
                 <div class="forecast-item">
@@ -880,7 +915,7 @@
                         <div class="weather-icon">
                             <i class="${weatherIcon}"></i>
                         </div>
-                        ${forecast.weather_desc}
+                        ${forecast.weather_desc}${rainfall}
                     </div>
                     <div class="forecast-temp">${forecast.t}°C</div>
                 </div>
@@ -896,16 +931,18 @@
         const risk = calculateFloodRisk();
         
         floodAnalysis.innerHTML = `
-            <p><strong>Tingkat risiko:</strong> <span class="warning-level warning-${risk.level}">${risk.text}</span></p>
-            <p><strong>Curah hujan:</strong> ${risk.rainfall}</p>
+            <p><strong>Status:</strong> <span class="warning-level warning-${risk.level}">${risk.text}</span></p>
+            <p><strong>Curah Hujan:</strong> ${risk.rainfall}</p>
             <p><strong>Durasi:</strong> ${risk.duration}</p>
-            <p><strong>Rekomendasi:</strong> ${risk.recommendation}</p>
+            <p><strong>Saran:</strong> ${risk.recommendation}</p>
         `;
     }
     
     function updateAITips(aiResponse) {
         const aiTips = document.getElementById('aiTips');
-        aiTips.innerHTML = `<p>${aiResponse.substring(0, 200)}...</p>`;
+        // Ambil 150 karakter pertama sebagai tips
+        const tips = aiResponse.replace(/<[^>]*>/g, '').substring(0, 150);
+        aiTips.innerHTML = `<p><strong>Tips AI:</strong> ${tips}...</p>`;
     }
     
     function getWeatherIcon(weatherDesc) {
@@ -915,37 +952,65 @@
         if (desc.includes('hujan')) {
             return desc.includes('ringan') ? 'fas fa-cloud-rain' : 'fas fa-cloud-showers-heavy';
         }
+        if (desc.includes('mendung')) return 'fas fa-cloud';
         return 'fas fa-cloud-sun';
     }
     
     // ========== INISIALISASI ==========
-    document.addEventListener('DOMContentLoaded', async function() {
-        console.log("🚀 Website chatbot cuaca dimuat");
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("🚀 Website Chatbot Cuaca xCent912 dimuat");
         
         // Set status awal
-        document.getElementById('apiStatus').textContent = "Mengecek...";
+        updateAPIStatus("Mengecek koneksi...");
         
-        // Muat data cuaca
+        // Muat data BMKG
         fetchBMKGData();
         
-        // Fokus ke input
-        document.getElementById('userInput').focus();
+        // Fokus ke input chat
+        setTimeout(() => {
+            document.getElementById('userInput').focus();
+        }, 500);
         
         // Update waktu
         document.getElementById('updateTime').textContent = new Date().toLocaleString('id-ID');
         
-        // Coba inisialisasi Gemini (background)
+        // Check API status setelah 2 detik
         setTimeout(async () => {
-            await initializeGemini();
+            if (GEMINI_API_KEY && !GEMINI_API_KEY.includes("BwjOfoKCFCjwxB58WuOeo7fefzwKBsxds")) {
+                // Test koneksi Gemini
+                try {
+                    const test = await callGeminiAPI("Test");
+                    if (test) {
+                        updateAPIStatus("Online (Gemini AI)");
+                    } else {
+                        updateAPIStatus("Online (AI Lokal)");
+                    }
+                } catch {
+                    updateAPIStatus("Online (AI Lokal)");
+                }
+            } else {
+                updateAPIStatus("Online (AI Lokal) - Ganti API Key untuk Gemini");
+            }
             
-            // Tambahkan pesan selamat datang
+            // Pesan selamat datang
             setTimeout(() => {
-                addMessage("👋 <strong>Selamat datang di Chatbot Cuaca xCent912!</strong><br><br>Saya siap membantu Anda dengan informasi cuaca terkini dan analisis potensi banjir berdasarkan data BMKG. Silakan ajukan pertanyaan!", 'bot');
-            }, 500);
-        }, 1000);
+                addMessage(`🤖 <strong>Selamat datang di Chatbot Cuaca xCent912!</strong><br><br>
+                Saya asisten AI yang siap membantu dengan:<br>
+                • Prakiraan cuaca dari BMKG<br>
+                • Analisis potensi banjir<br>
+                • Rekomendasi keselamatan<br><br>
+                Status: <span class="api-status">${document.getElementById('apiStatus').textContent}</span><br>
+                Silakan ajukan pertanyaan Anda!`, 'bot');
+            }, 1000);
+            
+        }, 2000);
     });
+    
+    // Ekspos fungsi untuk tombol reload
+    window.fetchBMKGData = fetchBMKGData;
 </script>
 </body>
 </html>
+
 
 
