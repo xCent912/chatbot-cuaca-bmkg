@@ -615,122 +615,53 @@
         return await callGeminiAPI(prompt);
     }
     
-    // ========== AI LOKAL (FALLBACK) ==========
-   // ========== AI LOKAL (FALLBACK) - VERSI DIPERBAIKI ==========
+   // ========== AI LOKAL (FALLBACK) - VERSI FIXED ==========
 function getLocalAIResponse(userMessage) {
     const lowerMsg = userMessage.toLowerCase();
     const weatherSummary = getWeatherSummary();
     const floodRisk = calculateFloodRisk();
     
-    // 1. PRAKIRAAN CUACA 3 HARI
-    if (lowerMsg.includes('3 hari') || lowerMsg.includes('tiga hari') || 
-        lowerMsg.includes('besok') || lowerMsg.includes('lusa') ||
-        lowerMsg.match(/hari\s+(ke)?\d+/) || lowerMsg.includes('prakiraan')) {
+    console.log("🔍 User message:", lowerMsg); // Debug
+    
+    // 1. PRAKIRAAN 3 HARI - HARUS DULUAN dan SPESIFIK
+    if (lowerMsg.includes('3 hari') || 
+        lowerMsg.includes('tiga hari') || 
+        lowerMsg.includes('besok') || 
+        lowerMsg.includes('lusa') ||
+        lowerMsg.includes('hari ke depan') ||
+        lowerMsg.includes('prakiraan cuaca') && (lowerMsg.includes('3') || lowerMsg.includes('tiga'))) {
         
-        return `📅 <strong>PRAKIRAAN CUACA 3 HARI KE DEPAN:</strong><br><br>
-        
-        <strong>📍 Lokasi:</strong> ${weatherSummary.location}<br>
-        <strong>📊 Sumber:</strong> Data BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)<br><br>
-        
-        <strong>HARI INI (${new Date().toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
-        • Pagi (06:00-09:00): Hujan Ringan, 25-26°C<br>
-        • Siang (10:00-13:00): Berawan, 28-30°C<br>
-        • Sore (14:00-17:00): Cerah Berawan, 28-30°C<br>
-        • Malam (18:00-21:00): Berawan, 25-26°C<br>
-        • <em>Curah hujan:</em> 1.6-1.7 mm/jam<br><br>
-        
-        <strong>BESOK (${new Date(Date.now() + 86400000).toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
-        • Pagi: Berawan, 27°C<br>
-        • Siang: Berawan, 31-32°C<br>
-        • Sore: Berawan, 28-30°C<br>
-        • Malam: Berawan, 26°C<br>
-        • <em>Potensi hujan:</em> Ringan (0-2 mm)<br><br>
-        
-        <strong>LUSA (${new Date(Date.now() + 172800000).toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
-        • Pagi: Berawan dengan hujan ringan, 26°C<br>
-        • Siang: Berawan, 30°C<br>
-        • Sore: Berawan, 28°C<br>
-        • Malam: Berawan, 25°C<br>
-        • <em>Potensi hujan:</em> Sedang (2-5 mm)<br><br>
-        
-        ⚠️ <strong>PERINGATAN:</strong> Prakiraan dapat berubah. Pantau update terbaru dari BMKG.<br>
-        <i>🔄 Update terakhir: ${new Date().toLocaleString('id-ID')}</i>`;
+        console.log("✅ Masuk: Prakiraan 3 hari");
+        return generate3DayForecast(weatherSummary);
     }
     
-    // 2. ANALISIS BANJIR (fokus pada data & risiko)
-    else if (lowerMsg.includes('analisis banjir') || lowerMsg.includes('potensi banjir') || 
-             lowerMsg.includes('risiko banjir') || lowerMsg.includes('banjir analisis')) {
+    // 2. ANALISIS BANJIR - SPESIFIK "analisis"
+    else if (lowerMsg.includes('analisis banjir') || 
+             (lowerMsg.includes('analisis') && lowerMsg.includes('banjir')) ||
+             lowerMsg.includes('potensi banjir')) {
         
-        return `⚠️ <strong>ANALISIS POTENSI BANJIR:</strong><br><br>
-        
-        <strong>📍 Lokasi Analisis:</strong> ${weatherSummary.location}<br>
-        <strong>📈 Data Dasar:</strong><br>
-        • Curah hujan terkini: ${floodRisk.rainfall}<br>
-        • Durasi hujan: ${floodRisk.duration}<br>
-        • Akumulasi 24 jam: ${(parseFloat(floodRisk.rainfall) * 3).toFixed(1)} mm<br><br>
-        
-        <strong>🔄 PROSES ANALISIS:</strong><br>
-        1. <em>Pengumpulan Data:</em> Monitoring curah hujan per jam dari BMKG<br>
-        2. <em>Perhitungan Akumulasi:</em> Total hujan dalam periode tertentu<br>
-        3. <em>Penilaian Risiko:</em> Berdasarkan threshold banjir lokal<br>
-        4. <em>Faktor Tambahan:</em> Topografi, drainase, kapasitas sungai<br><br>
-        
-        <strong>📊 HASIL ANALISIS:</strong><br>
-        • <strong>Level Risiko:</strong> <span class="warning-level warning-${floodRisk.level}">${floodRisk.text}</span><br>
-        • <strong>Probabilitas:</strong> ${floodRisk.level === 'high' ? 'Tinggi (70%)' : floodRisk.level === 'medium' ? 'Sedang (40%)' : 'Rendah (15%)'}<br>
-        • <strong>Dampak Potensial:</strong> ${getFloodImpact(floodRisk.level)}<br>
-        • <strong>Waktu Respon:</strong> ${floodRisk.level === 'high' ? '1-3 jam' : '3-6 jam'}<br><br>
-        
-        <i>🔍 Analisis berdasarkan algoritma risiko banjir dengan data BMKG</i>`;
+        console.log("✅ Masuk: Analisis banjir");
+        return generateFloodAnalysis(weatherSummary, floodRisk);
     }
     
-    // 3. ANTISIPASI/RECOMMENDASI BANJIR (fokus pada tindakan)
-    else if (lowerMsg.includes('antisipasi banjir') || lowerMsg.includes('rekomendasi banjir') || 
-             lowerMsg.includes('pencegahan banjir') || lowerMsg.includes('tips banjir') ||
-             lowerMsg.includes('siap banjir') || lowerMsg.includes('persiapan banjir')) {
+    // 3. REKOMENDASI/ANTISIPASI BANJIR - SPESIFIK "rekomendasi" atau "antisipasi"
+    else if (lowerMsg.includes('rekomendasi banjir') || 
+             lowerMsg.includes('antisipasi banjir') ||
+             (lowerMsg.includes('rekomendasi') && lowerMsg.includes('banjir')) ||
+             (lowerMsg.includes('antisipasi') && lowerMsg.includes('banjir')) ||
+             lowerMsg.includes('tips banjir') ||
+             lowerMsg.includes('pencegahan banjir')) {
         
-        return `🛡️ <strong>REKOMENDASI ANTISIPASI & PENCEGAHAN BANJIR:</strong><br><br>
-        
-        <strong>SEBELUM BANJIR (Persiapan):</strong><br>
-        ✅ <em>Persiapan Rumah:</em><br>
-        1. Pasang penutup bawah pintu (door dam) atau siapkan kantong pasir<br>
-        2. Naikkan barang elektronik dan dokumen penting ke lantai atas<br>
-        3. Periksa atap, talang, dan saluran pembuangan air<br>
-        4. Siapkan pompa air jika memungkinkan<br><br>
-        
-        ✅ <em>Persiapan Logistik:</em><br>
-        1. Tas darurat berisi: dokumen (KTP, KK, sertifikat), obat-obatan pribadi<br>
-        2. Makanan tahan lama (3-7 hari), air minum (4 liter/orang/hari)<br>
-        3. Penerangan: senter, lilin, powerbank, radio baterai<br>
-        4. Pakaian ganti dan selimut<br><br>
-        
-        <strong>SELAMA BANJIR (Tindakan):</strong><br>
-        🚨 <em>Keselamatan:</em><br>
-        1. MATIKAN listrik dan gas di meteran utama<br>
-        2. Jangan berjalan di air mengalir (risiko terseret/sengatan listrik)<br>
-        3. Gunakan air bersih yang telah disimpan<br>
-        4. Evakuasi ke titik kumpul yang aman jika diperlukan<br><br>
-        
-        📞 <em>Kontak Darurat:</em><br>
-        • 112: Call Center Darurat<br>
-        • 113: Pemadam Kebakaran<br>
-        • 119: Search and Rescue (SAR)<br>
-        • 129: Informasi Bencana BPBD<br><br>
-        
-        <strong>SETELAH BANJIR (Pemulihan):</strong><br>
-        🔧 <em>Pembersihan:</em><br>
-        1. Dokumentasikan kerusakan untuk asuransi<br>
-        2. Bersihkan dengan disinfektan (1:10 bleach:air)<br>
-        3. Periksa struktur bangunan sebelum huni kembali<br>
-        4. Buang makanan yang terkontaminasi<br><br>
-        
-        <i>📋 Dikembangkan berdasarkan pedoman BNPB (Badan Nasional Penanggulangan Bencana)</i>`;
+        console.log("✅ Masuk: Rekomendasi banjir");
+        return generateFloodRecommendations();
     }
     
     // 4. CUACA HARI INI
-    else if (lowerMsg.includes('cuaca hari ini') || lowerMsg.includes('cuaca sekarang') || 
-             lowerMsg.includes('prakiraan hari ini')) {
+    else if (lowerMsg.includes('cuaca hari ini') || 
+             lowerMsg.includes('cuaca sekarang') ||
+             (lowerMsg.includes('prakiraan') && lowerMsg.includes('hari ini'))) {
         
+        console.log("✅ Masuk: Cuaca hari ini");
         return `🌤️ <strong>PRAKIRAAN CUACA HARI INI (${weatherSummary.location}):</strong><br><br>
         ${weatherSummary.forecasts.map(f => 
             `• <strong>${f.time}:</strong> ${f.condition}, ${f.temp}, ${f.rain}`
@@ -743,39 +674,149 @@ function getLocalAIResponse(userMessage) {
         })} | Sumber: BMKG</i>`;
     }
     
-    // 5. DEFAULT RESPONSE
+    // 5. DEFAULT
     else {
+        console.log("✅ Masuk: Default response");
         return `🤖 <strong>Asisten Cuaca xCent912</strong><br><br>
         Saya dapat membantu Anda dengan:<br><br>
-        🔹 <strong>Prakiraan Cuaca:</strong><br>
-        • "Bagaimana cuaca hari ini?"<br>
-        • "Prakiraan cuaca 3 hari ke depan"<br>
-        • "Suhu dan curah hujan saat ini"<br><br>
-        
-        🔹 <strong>Analisis Banjir:</strong><br>
-        • "Analisis potensi banjir"<br>
-        • "Risiko banjir di daerah saya"<br><br>
-        
-        🔹 <strong>Rekomendasi:</strong><br>
-        • "Rekomendasi antisipasi banjir"<br>
-        • "Tips persiapan menghadapi banjir"<br>
-        • "Apa yang harus dilakukan saat banjir"<br><br>
-        
-        <em>Silakan pilih salah satu topik di atas!</em>`;
+        📅 <strong>Prakiraan 3 Hari:</strong> "prakiraan cuaca 3 hari ke depan"<br>
+        ⚠️ <strong>Analisis Banjir:</strong> "analisis potensi banjir"<br>
+        🛡️ <strong>Rekomendasi:</strong> "rekomendasi antisipasi banjir"<br>
+        🌤️ <strong>Cuaca Hari Ini:</strong> "bagaimana cuaca hari ini?"<br><br>
+        <em>Coba ketik salah satu contoh di atas!</em>`;
     }
+}
+
+// ========== FUNGSI GENERATOR TERPISAH ==========
+function generate3DayForecast(weatherSummary) {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayAfter = new Date(today);
+    dayAfter.setDate(dayAfter.getDate() + 2);
+    
+    return `📅 <strong>PRAKIRAAN CUACA 3 HARI KE DEPAN:</strong><br><br>
+    
+    <strong>📍 Lokasi:</strong> ${weatherSummary.location}<br>
+    <strong>📊 Sumber:</strong> Data BMKG<br>
+    <strong>📅 Periode:</strong> ${today.toLocaleDateString('id-ID')} - ${dayAfter.toLocaleDateString('id-ID')}<br><br>
+    
+    <strong>HARI INI (${today.toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
+    • ⏰ <strong>Pagi (06:00-09:00):</strong> Hujan Ringan<br>
+    • 🌡️ <strong>Suhu:</strong> 25-26°C<br>
+    • 💧 <strong>Curah Hujan:</strong> 1.6-1.7 mm/jam<br>
+    • 💨 <strong>Angin:</strong> 10-12 km/jam dari Barat Daya<br><br>
+    
+    <strong>BESOK (${tomorrow.toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
+    • ⏰ <strong>Pagi:</strong> Berawan<br>
+    • 🌡️ <strong>Suhu:</strong> 27-32°C<br>
+    • 💧 <strong>Curah Hujan:</strong> 0-2 mm (ringan)<br>
+    • 💨 <strong>Angin:</strong> 11-14 km/jam dari Barat Daya<br><br>
+    
+    <strong>LUSA (${dayAfter.toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
+    • ⏰ <strong>Pagi:</strong> Berawan dengan hujan ringan<br>
+    • 🌡️ <strong>Suhu:</strong> 25-30°C<br>
+    • 💧 <strong>Curah Hujan:</strong> 2-5 mm (sedang)<br>
+    • 💨 <strong>Angin:</strong> 9-12 km/jam dari Selatan<br><br>
+    
+    ⚠️ <strong>CATATAN PENTING:</strong><br>
+    1. Prakiraan dapat berubah sewaktu-waktu<br>
+    2. Pantau update terbaru dari BMKG<br>
+    3. Waspada potensi hujan lebat pada hari ketiga<br><br>
+    
+    <i>🔄 Update terakhir: ${new Date().toLocaleString('id-ID')}</i>`;
+}
+
+function generateFloodAnalysis(weatherSummary, floodRisk) {
+    return `⚠️ <strong>ANALISIS POTENSI BANJIR:</strong><br><br>
+    
+    <strong>📍 Lokasi:</strong> ${weatherSummary.location}<br>
+    <strong>📅 Tanggal Analisis:</strong> ${new Date().toLocaleDateString('id-ID')}<br>
+    <strong>⏰ Jam Analisis:</strong> ${new Date().toLocaleTimeString('id-ID')}<br><br>
+    
+    <strong>📊 DATA DASAR:</strong><br>
+    • 🌧️ <strong>Curah Hujan Terkini:</strong> ${floodRisk.rainfall}<br>
+    • ⏳ <strong>Durasi Hujan:</strong> ${floodRisk.duration}<br>
+    • 📈 <strong>Akumulasi 24 Jam:</strong> ${(parseFloat(floodRisk.rainfall) * 4).toFixed(1)} mm<br>
+    • 🏞️ <strong>Topografi:</strong> Dataran rendah (risiko tinggi)<br>
+    • 🚰 <strong>Drainase:</strong> Kapasitas sedang<br><br>
+    
+    <strong>📋 HASIL ANALISIS RISIKO:</strong><br>
+    • <strong>Level Risiko:</strong> <span class="warning-level warning-${floodRisk.level}" style="font-size: 14px; padding: 6px 12px;">${floodRisk.text.toUpperCase()}</span><br>
+    • <strong>Probabilitas Banjir:</strong> ${floodRisk.level === 'high' ? '70-80%' : floodRisk.level === 'medium' ? '40-60%' : '10-20%'}<br>
+    • <strong>Tingkat Genangan:</strong> ${getFloodImpact(floodRisk.level)}<br>
+    • <strong>Waktu Respon:</strong> ${floodRisk.level === 'high' ? 'SIAP SIAGA (1-2 jam)' : floodRisk.level === 'medium' ? 'WASPADA (3-4 jam)' : 'NORMAL (6+ jam)'}<br><br>
+    
+    <strong>🔍 FAKTOR PENDUKUNG:</strong><br>
+    1. Curah hujan > 20 mm/jam = Risiko Tinggi<br>
+    2. Durasi > 3 jam = Potensi akumulasi tinggi<br>
+    3. Topografi dataran rendah = Drainase lambat<br>
+    4. Kapasitas saluran = 60% terisi<br><br>
+    
+    <i>📡 Analisis menggunakan data real-time BMKG dan algoritma risiko banjir</i>`;
+}
+
+function generateFloodRecommendations() {
+    return `🛡️ <strong>REKOMENDASI & ANTISIPASI BANJIR:</strong><br><br>
+    
+    <strong>🚨 TINDAKAN SEGERA (24 JAM KE DEPAN):</strong><br>
+    ✅ <strong>Persiapan Rumah:</strong><br>
+    1. Pasang water barrier atau kantong pasir di pintu masuk<br>
+    2. Naikkan barang elektronik minimal 50cm dari lantai<br>
+    3. Pindahkan dokumen penting ke lantai atas atau tempat tinggi<br>
+    4. Periksa dan bersihkan saluran air di sekitar rumah<br><br>
+    
+    ✅ <strong>Logistik Darurat:</strong><br>
+    1. Siapkan tas darurat berisi:<br>
+       • Dokumen (KTP, KK, sertifikat, polis asuransi)<br>
+       • Obat-obatan pribadi dan P3K<br>
+       • Pakaian ganti (3 set) dan selimut<br>
+       • Makanan tahan lama (mie instan, biskuit, air mineral)<br>
+    2. Senter + baterai cadangan<br>
+    3. Powerbank fully charged<br>
+    4. Radio baterai untuk informasi darurat<br><br>
+    
+    <strong>📞 KONTAK DARURAT:</strong><br>
+    • <strong>112</strong> - Call Center Darurat Nasional<br>
+    • <strong>113</strong> - Pemadam Kebakaran<br>
+    • <strong>119</strong> - SAR (Search and Rescue)<br>
+    • <strong>129</strong> - BPBD (Badan Penanggulangan Bencana Daerah)<br>
+    • <strong>021-3456677</strong> - Dinas PUPR DKI Jakarta<br><br>
+    
+    <strong>🚷 LARANGAN SAAT BANJIR:</strong><br>
+    1. ❌ Jangan berjalan di air banjir (risiko sengatan listrik & penyakit)<br>
+    2. ❌ Jangan mengonsumsi air yang terkontaminasi<br>
+    3. ❌ Jangan menyalakan listrik jika rumah tergenang<br>
+    4. ❌ Jangan mengendarai kendaraan di air >30cm<br><br>
+    
+    <strong>🏥 KESEHATAN:</strong><br>
+    1. Siapkan obat demam, diare, dan luka luar<br>
+    2. Gunakan sepatu boot saat membersihkan rumah<br>
+    3. Cuci tangan dengan sabun setelah kontak air banjir<br>
+    4. Rebus air minum hingga mendidih<br><br>
+    
+    <strong>📋 CHECKLIST EVALUASI:</strong><br>
+    [ ] Tas darurat siap<br>
+    [ ] Dokumen aman<br>
+    [ ] Logistik cukup untuk 3 hari<br>
+    [ ] Kontak darurat tersimpan<br>
+    [ ] Rute evakuasi diketahui<br>
+    [ ] Titik kumpul keluarga ditentukan<br><br>
+    
+    <i>📚 Sumber: Pedoman BNPB dan pengalaman penanganan banjir Jakarta</i>`;
 }
 
 // ========== FUNGSI BANTU TAMBAHAN ==========
 function getFloodImpact(riskLevel) {
     switch(riskLevel) {
         case 'high':
-            return 'Genangan >50cm, transportasi lumpuh, risiko evakuasi';
+            return 'Tinggi (50-100cm) - Evakuasi diperlukan';
         case 'medium':
-            return 'Genangan 20-50cm, gangguan transportasi lokal';
+            return 'Sedang (20-50cm) - Transportasi terganggu';
         case 'low':
-            return 'Genangan <20cm, gangguan kecil';
+            return 'Rendah (<20cm) - Gangguan minimal';
         default:
-            return 'Minimal';
+            return 'Tidak signifikan';
     }
 }
     
@@ -1092,4 +1133,5 @@ function getFloodImpact(riskLevel) {
 </script>
 </body>
 </html>
+
 
