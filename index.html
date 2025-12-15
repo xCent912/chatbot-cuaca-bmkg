@@ -543,7 +543,7 @@
 
 <script>
 // ========== KONFIGURASI ==========
-const GEMINI_API_KEY = "AIzaSyCxqfa5mhhctEqV3Z3RofrZcJRzGEZIw7g";
+const GEMINI_API_KEY = AIzaSyCxqfa5mhhctEqV3Z3RofrZcJRzGEZIw7g;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
 const BMKG_WILAYAH_API = "https://data.bmkg.go.id/DataMKG/MEWS/DigitalForecast/DigitalForecast-";
 
@@ -606,7 +606,7 @@ function applyCustomLocation() {
 
 // ========== FUNGSI GEMINI ==========
 async function callGeminiAPI(prompt) {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("BwjOfoKCFCjwxB58WuOeo7fefzwKBsxds")) {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("AIzaSyCxqfa5mhhctEqV3Z3RofrZcJRzGEZIw7g")) {
         console.warn("⚠️ API Key belum diganti, menggunakan AI lokal");
         return null;
     }
@@ -1307,6 +1307,7 @@ window.applyCustomLocation = applyCustomLocation;
 </script>
 </body>
 </html>
+
 
 
 
