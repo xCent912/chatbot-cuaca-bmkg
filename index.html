@@ -431,16 +431,16 @@
                     
                     <!-- Pertanyaan yang disarankan -->
                     <div class="suggested-questions">
-                        <div class="suggested-question" onclick="askQuestion('Bagaimana prakiraan cuaca hari ini di Kemayoran berdasarkan data BMKG?')">
+                        <div class="suggested-question" onclick="askQuestion('Bagaimana prakiraan cuaca hari ini?')">
                             <i class="fas fa-sun"></i> Cuaca hari ini
                         </div>
-                        <div class="suggested-question" onclick="askQuestion('Analisis potensi banjir di Kemayoran berdasarkan data curah hujan BMKG')">
+                        <div class="suggested-question" onclick="askQuestion('Analisis potensi banjir')">
                             <i class="fas fa-water"></i> Analisis banjir
                         </div>
-                        <div class="suggested-question" onclick="askQuestion('Rekomendasi antisipasi banjir untuk wilayah Jakarta Pusat')">
+                        <div class="suggested-question" onclick="askQuestion('Rekomendasi antisipasi banjir')">
                             <i class="fas fa-shield-alt"></i> Antisipasi banjir
                         </div>
-                        <div class="suggested-question" onclick="askQuestion('Jelaskan data cuaca dari BMKG untuk 3 hari ke depan')">
+                        <div class="suggested-question" onclick="askQuestion('Prakiraan cuaca 3 hari ke depan')">
                             <i class="fas fa-calendar-alt"></i> Prakiraan 3 hari
                         </div>
                     </div>
@@ -467,6 +467,32 @@
                             <h4 id="locationName">Kemayoran, Jakarta Pusat</h4>
                             <p id="locationDetails">Memuat data lokasi...</p>
                             <p>Data diperbarui: <span id="updateTime">-</span></p>
+                            
+                            <!-- DROPDOWN LOKASI -->
+                            <div style="margin-top: 10px;">
+                                <label for="locationSelect" style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--primary);">
+                                    <i class="fas fa-map-pin"></i> Pilih Lokasi:
+                                </label>
+                                <select id="locationSelect" onchange="changeLocation(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;">
+                                    <option value="31.71.03.1001">Kemayoran, Jakarta Pusat</option>
+                                    <option value="31.71.01.1001">Gambir, Jakarta Pusat</option>
+                                    <option value="31.72.01.1001">Penjaringan, Jakarta Utara</option>
+                                    <option value="31.73.01.1001">Tebet, Jakarta Selatan</option>
+                                    <option value="32.73.01.1001">Bandung, Jawa Barat</option>
+                                    <option value="32.75.01.1001">Bogor, Jawa Barat</option>
+                                    <option value="33.72.01.1001">Semarang, Jawa Tengah</option>
+                                    <option value="35.78.01.1001">Surabaya, Jawa Timur</option>
+                                    <option value="custom">Custom Kode Wilayah...</option>
+                                </select>
+                                
+                                <!-- Input untuk kode custom -->
+                                <div id="customLocationInput" style="display: none; margin-top: 10px;">
+                                    <input type="text" id="customLocationCode" placeholder="Masukkan kode wilayah (contoh: 31.71.01.1001)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <button onclick="applyCustomLocation()" style="margin-top: 5px; padding: 6px 12px; background-color: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; width: 100%;">
+                                        <i class="fas fa-check"></i> Terapkan
+                                    </button>
+                                </div>
+                            </div>
                             
                             <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
                                 <button onclick="fetchBMKGData()" style="padding: 8px 15px; background-color: var(--secondary); color: white; border: none; border-radius: 4px; cursor: pointer;">
@@ -535,7 +561,50 @@ const WILAYAH_CODES = {
     "bali": "507000"
 };
 
-// ========== FUNGSI GEMINI DENGAN FETCH API ==========
+// ========== FUNGSI GANTI LOKASI ==========
+function changeLocation(locationCode) {
+    if (locationCode === "custom") {
+        document.getElementById('customLocationInput').style.display = 'block';
+        return;
+    }
+    
+    currentLocation = locationCode;
+    
+    const forecastContainer = document.getElementById('weatherForecast');
+    forecastContainer.innerHTML = '<p><i class="fas fa-spinner fa-spin"></i> Mengambil data untuk lokasi baru...</p>';
+    
+    fetchBMKGData();
+    
+    addMessage(`📍 <strong>Lokasi diubah</strong><br>Mengambil data cuaca untuk lokasi baru...`, 'bot');
+}
+
+function applyCustomLocation() {
+    const customCode = document.getElementById('customLocationCode').value.trim();
+    
+    if (!customCode) {
+        alert("Masukkan kode wilayah terlebih dahulu!");
+        return;
+    }
+    
+    if (!customCode.includes('.')) {
+        alert("Format kode wilayah tidak valid. Contoh: 31.71.01.1001");
+        return;
+    }
+    
+    currentLocation = customCode;
+    
+    document.getElementById('customLocationInput').style.display = 'none';
+    document.getElementById('locationSelect').value = "custom";
+    
+    const customOption = document.querySelector('#locationSelect option[value="custom"]');
+    customOption.text = `Custom: ${customCode}`;
+    
+    fetchBMKGData();
+    
+    addMessage(`📍 <strong>Lokasi custom diterapkan:</strong> ${customCode}<br>Mengambil data cuaca...`, 'bot');
+}
+
+// ========== FUNGSI GEMINI ==========
 async function callGeminiAPI(prompt) {
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("BwjOfoKCFCjwxB58WuOeo7fefzwKBsxds")) {
         console.warn("⚠️ API Key belum diganti, menggunakan AI lokal");
@@ -552,15 +621,10 @@ async function callGeminiAPI(prompt) {
             })
         });
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
         
         const data = await response.json();
-        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-            return data.candidates[0].content.parts[0].text;
-        }
-        return null;
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     } catch (error) {
         console.error("❌ Error Gemini API:", error);
         return null;
@@ -632,7 +696,7 @@ async function getGeminiResponse(userMessage) {
     return await callGeminiAPI(prompt);
 }
 
-// ========== AI LOKAL (FALLBACK) - VERSI FIXED ==========
+// ========== AI LOKAL (FALLBACK) ==========
 function getLocalAIResponse(userMessage) {
     const lowerMsg = userMessage.toLowerCase();
     const weatherSummary = getWeatherSummary();
@@ -640,129 +704,112 @@ function getLocalAIResponse(userMessage) {
     
     console.log("🔍 User message:", lowerMsg);
     
-    // 1. PRAKIRAAN 3 HARI
-    if (lowerMsg.includes('3 hari') || lowerMsg.includes('tiga hari') || 
-        lowerMsg.includes('besok') || lowerMsg.includes('lusa') ||
-        lowerMsg.includes('hari ke depan') || lowerMsg.includes('prakiraan cuaca')) {
+    // 1. PERINTAH GANTI LOKASI
+    if (lowerMsg.includes('ganti lokasi') || lowerMsg.includes('ubah lokasi') || lowerMsg.match(/lokasi.*\d+\.\d+\.\d+\.\d+/)) {
+        const codeMatch = lowerMsg.match(/(\d+\.\d+\.\d+\.\d+)/);
+        if (codeMatch) {
+            const newLocation = codeMatch[1];
+            currentLocation = newLocation;
+            fetchBMKGData();
+            
+            return `📍 <strong>Mengganti lokasi ke kode: ${newLocation}</strong><br><br>
+            <i>⏳ Mengambil data cuaca untuk lokasi baru...</i>`;
+        } else {
+            return `📍 <strong>Perintah ganti lokasi</strong><br><br>
+            Untuk mengganti lokasi:<br>
+            • "ganti lokasi 31.71.01.1001" (Gambir)<br>
+            • "ubah lokasi 32.73.01.1001" (Bandung)<br>
+            • Atau gunakan dropdown di panel kanan`;
+        }
+    }
+    
+    // 2. PRAKIRAAN 3 HARI
+    else if (lowerMsg.includes('3 hari') || lowerMsg.includes('tiga hari') || 
+             lowerMsg.includes('besok') || lowerMsg.includes('lusa') ||
+             lowerMsg.includes('hari ke depan') || lowerMsg.includes('prakiraan cuaca')) {
         
-        console.log("✅ Masuk: Prakiraan 3 hari");
         const today = new Date();
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
         const dayAfter = new Date(today);
         dayAfter.setDate(dayAfter.getDate() + 2);
         
-        return `📅 <strong>PRAKIRAAN CUACA 3 HARI KE DEPAN:</strong><br><br>
-        
-        <strong>📍 Lokasi:</strong> ${weatherSummary.location}<br>
-        <strong>📊 Sumber:</strong> Data BMKG<br><br>
+        return `📅 <strong>PRAKIRAAN CUACA 3 HARI KE DEPAN (${weatherSummary.location}):</strong><br><br>
         
         <strong>HARI INI (${today.toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
         • Pagi: Hujan Ringan, 25-26°C<br>
         • Siang: Berawan, 28-30°C<br>
         • Sore: Cerah Berawan, 28-30°C<br>
-        • Malam: Berawan, 25-26°C<br>
-        • Curah hujan: 1.6-1.7 mm/jam<br><br>
+        • Malam: Berawan, 25-26°C<br><br>
         
         <strong>BESOK (${tomorrow.toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
         • Pagi: Berawan, 27°C<br>
         • Siang: Berawan, 31-32°C<br>
         • Sore: Berawan, 28-30°C<br>
-        • Malam: Berawan, 26°C<br>
-        • Potensi hujan: Ringan (0-2 mm)<br><br>
+        • Malam: Berawan, 26°C<br><br>
         
         <strong>LUSA (${dayAfter.toLocaleDateString('id-ID', { weekday: 'long' })}):</strong><br>
         • Pagi: Berawan dengan hujan ringan, 26°C<br>
         • Siang: Berawan, 30°C<br>
         • Sore: Berawan, 28°C<br>
-        • Malam: Berawan, 25°C<br>
-        • Potensi hujan: Sedang (2-5 mm)<br><br>
+        • Malam: Berawan, 25°C<br><br>
         
-        ⚠️ <strong>PERINGATAN:</strong> Prakiraan dapat berubah. Pantau update terbaru dari BMKG.<br>
-        <i>🔄 Update terakhir: ${new Date().toLocaleString('id-ID')}</i>`;
+        ⚠️ <strong>PERINGATAN:</strong> Prakiraan dapat berubah.<br>
+        <i>🔄 Update: ${new Date().toLocaleString('id-ID')}</i>`;
     }
     
-    // 2. ANALISIS BANJIR
+    // 3. ANALISIS BANJIR
     else if (lowerMsg.includes('analisis banjir') || 
              (lowerMsg.includes('analisis') && lowerMsg.includes('banjir')) ||
              lowerMsg.includes('potensi banjir')) {
         
-        console.log("✅ Masuk: Analisis banjir");
-        return `⚠️ <strong>ANALISIS POTENSI BANJIR:</strong><br><br>
+        return `⚠️ <strong>ANALISIS POTENSI BANJIR (${weatherSummary.location}):</strong><br><br>
         
-        <strong>📍 Lokasi Analisis:</strong> ${weatherSummary.location}<br>
         <strong>📈 Data Dasar:</strong><br>
-        • Curah hujan terkini: ${floodRisk.rainfall}<br>
-        • Durasi hujan: ${floodRisk.duration}<br>
+        • Curah hujan: ${floodRisk.rainfall}<br>
+        • Durasi: ${floodRisk.duration}<br>
         • Akumulasi 24 jam: ${(parseFloat(floodRisk.rainfall) * 3).toFixed(1)} mm<br><br>
-        
-        <strong>🔄 PROSES ANALISIS:</strong><br>
-        1. <em>Pengumpulan Data:</em> Monitoring curah hujan per jam dari BMKG<br>
-        2. <em>Perhitungan Akumulasi:</em> Total hujan dalam periode tertentu<br>
-        3. <em>Penilaian Risiko:</em> Berdasarkan threshold banjir lokal<br>
-        4. <em>Faktor Tambahan:</em> Topografi, drainase, kapasitas sungai<br><br>
         
         <strong>📊 HASIL ANALISIS:</strong><br>
         • <strong>Level Risiko:</strong> <span class="warning-level warning-${floodRisk.level}">${floodRisk.text}</span><br>
         • <strong>Probabilitas:</strong> ${floodRisk.level === 'high' ? 'Tinggi (70%)' : floodRisk.level === 'medium' ? 'Sedang (40%)' : 'Rendah (15%)'}<br>
-        • <strong>Dampak Potensial:</strong> ${getFloodImpact(floodRisk.level)}<br>
+        • <strong>Dampak:</strong> ${getFloodImpact(floodRisk.level)}<br>
         • <strong>Waktu Respon:</strong> ${floodRisk.level === 'high' ? '1-3 jam' : '3-6 jam'}<br><br>
         
-        <i>🔍 Analisis berdasarkan algoritma risiko banjir dengan data BMKG</i>`;
+        <i>🔍 Analisis berdasarkan data BMKG</i>`;
     }
     
-    // 3. REKOMENDASI/ANTISIPASI BANJIR
+    // 4. REKOMENDASI BANJIR
     else if (lowerMsg.includes('rekomendasi banjir') || 
              lowerMsg.includes('antisipasi banjir') ||
              (lowerMsg.includes('rekomendasi') && lowerMsg.includes('banjir')) ||
-             (lowerMsg.includes('antisipasi') && lowerMsg.includes('banjir')) ||
-             lowerMsg.includes('tips banjir') || lowerMsg.includes('pencegahan banjir')) {
+             (lowerMsg.includes('antisipasi') && lowerMsg.includes('banjir'))) {
         
-        console.log("✅ Masuk: Rekomendasi banjir");
-        return `🛡️ <strong>REKOMENDASI ANTISIPASI & PENCEGAHAN BANJIR:</strong><br><br>
+        return `🛡️ <strong>REKOMENDASI ANTISIPASI BANJIR:</strong><br><br>
         
-        <strong>SEBELUM BANJIR (Persiapan):</strong><br>
-        ✅ <em>Persiapan Rumah:</em><br>
-        1. Pasang penutup bawah pintu (door dam) atau siapkan kantong pasir<br>
-        2. Naikkan barang elektronik dan dokumen penting ke lantai atas<br>
-        3. Periksa atap, talang, dan saluran pembuangan air<br>
-        4. Siapkan pompa air jika memungkinkan<br><br>
+        <strong>SEBELUM BANJIR:</strong><br>
+        1. Pasang penutup pintu atau kantong pasir<br>
+        2. Naikkan barang elektronik dan dokumen penting<br>
+        3. Periksa saluran air<br>
+        4. Siapkan tas darurat<br><br>
         
-        ✅ <em>Persiapan Logistik:</em><br>
-        1. Tas darurat berisi: dokumen (KTP, KK, sertifikat), obat-obatan pribadi<br>
-        2. Makanan tahan lama (3-7 hari), air minum (4 liter/orang/hari)<br>
-        3. Penerangan: senter, lilin, powerbank, radio baterai<br>
-        4. Pakaian ganti dan selimut<br><br>
+        <strong>SELAMA BANJIR:</strong><br>
+        1. Matikan listrik dan gas<br>
+        2. Jangan berjalan di air mengalir<br>
+        3. Gunakan air bersih yang disimpan<br>
+        4. Hubungi 112 jika perlu bantuan<br><br>
         
-        <strong>SELAMA BANJIR (Tindakan):</strong><br>
-        🚨 <em>Keselamatan:</em><br>
-        1. MATIKAN listrik dan gas di meteran utama<br>
-        2. Jangan berjalan di air mengalir (risiko terseret/sengatan listrik)<br>
-        3. Gunakan air bersih yang telah disimpan<br>
-        4. Evakuasi ke titik kumpul yang aman jika diperlukan<br><br>
-        
-        📞 <em>Kontak Darurat:</em><br>
-        • 112: Call Center Darurat<br>
-        • 113: Pemadam Kebakaran<br>
-        • 119: Search and Rescue (SAR)<br>
-        • 129: Informasi Bencana BPBD<br><br>
-        
-        <strong>SETELAH BANJIR (Pemulihan):</strong><br>
-        🔧 <em>Pembersihan:</em><br>
-        1. Dokumentasikan kerusakan untuk asuransi<br>
-        2. Bersihkan dengan disinfektan (1:10 bleach:air)<br>
-        3. Periksa struktur bangunan sebelum huni kembali<br>
-        4. Buang makanan yang terkontaminasi<br><br>
-        
-        <i>📋 Dikembangkan berdasarkan pedoman BNPB</i>`;
+        <strong>SETELAH BANJIR:</strong><br>
+        1. Dokumentasikan kerusakan<br>
+        2. Bersihkan dengan disinfektan<br>
+        3. Periksa struktur bangunan`;
     }
     
-    // 4. DATA WILAYAH SPESIFIK
+    // 5. DATA WILAYAH
     else if (lowerMsg.includes('wilayah') || lowerMsg.includes('daerah') ||
              lowerMsg.includes('jakarta') || lowerMsg.includes('jawa') ||
              lowerMsg.includes('bali') || lowerMsg.includes('banten')) {
         
-        console.log("✅ Masuk: Data wilayah spesifik");
         let wilayah = "jakarta";
         if (lowerMsg.includes('jawa barat')) wilayah = "jawa barat";
         else if (lowerMsg.includes('jawa tengah')) wilayah = "jawa tengah";
@@ -784,37 +831,30 @@ function getLocalAIResponse(userMessage) {
         });
         
         return `🗺️ <strong>Mengambil data cuaca untuk wilayah ${wilayah.toUpperCase()}...</strong><br><br>
-        <i>⏳ Mohon tunggu, sedang mengambil data dari BMKG Digital Forecast...</i>`;
+        <i>⏳ Mohon tunggu, sedang mengambil data dari BMKG...</i>`;
     }
     
-    // 5. CUACA HARI INI
+    // 6. CUACA HARI INI
     else if (lowerMsg.includes('cuaca hari ini') || 
              lowerMsg.includes('cuaca sekarang') ||
              (lowerMsg.includes('prakiraan') && lowerMsg.includes('hari ini'))) {
         
-        console.log("✅ Masuk: Cuaca hari ini");
         return `🌤️ <strong>PRAKIRAAN CUACA HARI INI (${weatherSummary.location}):</strong><br><br>
         ${weatherSummary.forecasts.map(f => 
             `• <strong>${f.time}:</strong> ${f.condition}, ${f.temp}, ${f.rain}`
         ).join('<br>')}<br><br>
-        <i>🗓️ Update: ${new Date().toLocaleDateString('id-ID', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-        })} | Sumber: BMKG</i>`;
+        <i>🗓️ Update: ${new Date().toLocaleDateString('id-ID')} | Sumber: BMKG</i>`;
     }
     
-    // 6. DEFAULT
+    // 7. DEFAULT
     else {
-        console.log("✅ Masuk: Default response");
         return `🤖 <strong>Asisten Cuaca xCent912</strong><br><br>
         Saya dapat membantu Anda dengan:<br><br>
         📅 <strong>Prakiraan 3 Hari:</strong> "prakiraan cuaca 3 hari ke depan"<br>
         ⚠️ <strong>Analisis Banjir:</strong> "analisis potensi banjir"<br>
         🛡️ <strong>Rekomendasi:</strong> "rekomendasi antisipasi banjir"<br>
         🌤️ <strong>Cuaca Hari Ini:</strong> "bagaimana cuaca hari ini?"<br>
-        🗺️ <strong>Data Wilayah:</strong> "data cuaca Jakarta"<br><br>
+        🗺️ <strong>Ganti Lokasi:</strong> "ganti lokasi 31.71.01.1001"<br><br>
         <em>Coba ketik salah satu contoh di atas!</em>`;
     }
 }
@@ -828,14 +868,11 @@ async function getWeatherData(wilayahCode) {
     
     const url = `https://data.bmkg.go.id/DataMKG/MEWS/DigitalForecast/DigitalForecast-${wilayahCode}.json`;
     
-    console.log(`📡 Mengambil data dari: ${url}`);
-    
     try {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
-        console.log("✅ Data BMKG wilayah berhasil diambil");
         return processWilayahData(data, wilayahCode);
         
     } catch (error) {
@@ -846,25 +883,15 @@ async function getWeatherData(wilayahCode) {
 }
 
 function processWilayahData(data, wilayahCode) {
-    if (!data || !data.Prakiraan) {
-        console.warn("⚠️ Struktur data tidak sesuai");
-        return null;
-    }
+    if (!data || !data.Prakiraan) return null;
     
-    const result = {
-        wilayah: data.wilayah || "Tidak diketahui",
-        prakiraan: []
-    };
-    
+    const result = { wilayah: data.wilayah || "Tidak diketahui", prakiraan: [] };
     const prakiraanHarian = data.Prakiraan.slice(0, 3);
     
     prakiraanHarian.forEach((hari, index) => {
-        const dailyForecast = {
-            tanggal: hari.tanggal || `Hari ${index + 1}`,
-            jam: []
-        };
-        
+        const dailyForecast = { tanggal: hari.tanggal || `Hari ${index + 1}`, jam: [] };
         const importantTimes = [6, 12, 18];
+        
         if (hari.jam && Array.isArray(hari.jam)) {
             importantTimes.forEach(hour => {
                 const jamData = hari.jam.find(j => parseInt(j.jam) === hour);
@@ -1047,7 +1074,7 @@ function calculateFloodRisk() {
             text: 'TINGGI',
             rainfall: totalRain.toFixed(1) + ' mm',
             duration: rainHours + ' jam',
-            recommendation: 'Waspada banjir! Siapkan evakuasi, hindari daerah rendah.'
+            recommendation: 'Waspada banjir! Siapkan evakuasi.'
         };
     } else if (totalRain > 5) {
         return {
@@ -1055,7 +1082,7 @@ function calculateFloodRisk() {
             text: 'SEDANG',
             rainfall: totalRain.toFixed(1) + ' mm',
             duration: rainHours + ' jam',
-            recommendation: 'Potensi genangan. Periksa saluran air dan siapkan tindakan.'
+            recommendation: 'Potensi genangan. Periksa saluran air.'
         };
     } else {
         return {
@@ -1063,15 +1090,15 @@ function calculateFloodRisk() {
             text: 'RENDAH',
             rainfall: totalRain.toFixed(1) + ' mm',
             duration: rainHours + ' jam',
-            recommendation: 'Risiko rendah. Tetap pantau perkembangan cuaca.'
+            recommendation: 'Risiko rendah. Tetap pantau cuaca.'
         };
     }
 }
 
 function getFloodImpact(riskLevel) {
     switch(riskLevel) {
-        case 'high': return 'Genangan >50cm, transportasi lumpuh, risiko evakuasi';
-        case 'medium': return 'Genangan 20-50cm, gangguan transportasi lokal';
+        case 'high': return 'Genangan >50cm, transportasi lumpuh';
+        case 'medium': return 'Genangan 20-50cm, gangguan transportasi';
         case 'low': return 'Genangan <20cm, gangguan kecil';
         default: return 'Minimal';
     }
@@ -1083,11 +1110,8 @@ async function fetchBMKGData() {
         const response = await fetch(`https://api.bmkg.go.id/publik/prakiraan-cuaca?adm4=${currentLocation}`);
         
         if (!response.ok) {
-            const altResponse = await fetch(`https://api.bmkg.go.id/publik/prakiraan-cuaca`);
-            if (altResponse.ok) {
-                console.log("⚠️ Menggunakan data BMKG umum");
-                useSampleData();
-                return;
+            if (response.status === 404) {
+                throw new Error(`Kode wilayah ${currentLocation} tidak ditemukan.`);
             }
             throw new Error(`HTTP ${response.status}`);
         }
@@ -1098,13 +1122,40 @@ async function fetchBMKGData() {
         updateFloodAnalysis();
         
         document.getElementById('updateTime').textContent = new Date().toLocaleString('id-ID');
-        console.log("✅ Data BMKG berhasil dimuat");
+        console.log(`✅ Data BMKG untuk ${currentLocation} berhasil dimuat`);
+        
+        if (currentLocation !== "31.71.03.1001") {
+            const locationSelect = document.getElementById('locationSelect');
+            const customOption = locationSelect.querySelector('option[value="custom"]');
+            if (customOption) {
+                customOption.text = `Custom: ${currentLocation}`;
+                locationSelect.value = "custom";
+            }
+        }
         
     } catch (error) {
         console.error("❌ Error fetching BMKG data:", error);
-        useSampleData();
+        
+        const errorMessage = error.message.includes('tidak ditemukan') 
+            ? `Kode wilayah ${currentLocation} tidak valid.`
+            : 'API BMKG sedang tidak dapat diakses.';
+        
         document.getElementById('weatherForecast').innerHTML = 
-            `<p style="color: #e74c3c;">⚠️ Menggunakan data contoh. API BMKG sedang tidak dapat diakses.</p>`;
+            `<div style="color: #e74c3c; padding: 10px; background: #ffeaa7; border-radius: 5px;">
+                <i class="fas fa-exclamation-triangle"></i> ${errorMessage}
+                <br><small>Coba gunakan kode wilayah yang berbeda.</small>
+            </div>`;
+        
+        if (currentLocation !== "31.71.03.1001") {
+            setTimeout(() => {
+                currentLocation = "31.71.03.1001";
+                document.getElementById('locationSelect').value = "31.71.03.1001";
+                fetchBMKGData();
+                addMessage(`⚠️ <strong>Kembali ke lokasi default (Kemayoran)</strong><br>Kode wilayah sebelumnya tidak valid.`, 'bot');
+            }, 2000);
+        } else {
+            useSampleData();
+        }
     }
 }
 
@@ -1209,7 +1260,7 @@ function getWeatherIcon(weatherDesc) {
 
 // ========== INISIALISASI ==========
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("🚀 Website Chatbot Cuaca xCent912 dimuat");
+    console.log("🚀 Website Chatbot Cuaca dimuat");
     
     updateAPIStatus("Mengecek koneksi...");
     fetchBMKGData();
@@ -1238,20 +1289,21 @@ document.addEventListener('DOMContentLoaded', function() {
         
         setTimeout(() => {
             addMessage(`🤖 <strong>Selamat datang di Chatbot Cuaca xCent912!</strong><br><br>
-            Saya asisten AI yang siap membantu dengan:<br>
-            • Prakiraan cuaca dari BMKG<br>
-            • Analisis potensi banjir<br>
-            • Rekomendasi keselamatan<br><br>
+            Fitur baru: <strong>GANTI LOKASI</strong> tersedia!<br>
+            • Gunakan dropdown di panel kanan<br>
+            • Atau ketik: "ganti lokasi 31.71.01.1001"<br><br>
             Status: <span class="api-status">${document.getElementById('apiStatus').textContent}</span><br>
-            Silakan ajukan pertanyaan Anda!`, 'bot');
+            Silakan ajukan pertanyaan!`, 'bot');
         }, 1000);
         
     }, 2000);
 });
 
-// Ekspos fungsi untuk tombol reload
+// Ekspos fungsi untuk akses global
 window.fetchBMKGData = fetchBMKGData;
 window.getWeatherData = getWeatherData;
+window.changeLocation = changeLocation;
+window.applyCustomLocation = applyCustomLocation;
 </script>
 </body>
 </html>
